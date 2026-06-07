@@ -1,0 +1,6 @@
+../Src/PuertoSerie_USART_PC.c:33:6:BlinkCustomizable	4
+../Src/PuertoSerie_USART_PC.c:52:6:USART2_EscribirChar	2
+../Src/PuertoSerie_USART_PC.c:68:6:USART2_EscribirString	2
+../Src/PuertoSerie_USART_PC.c:76:6:USART2_LeerChar	2
+../Src/PuertoSerie_USART_PC.c:86:6:USART2_LeerString	6
+../Src/PuertoSerie_USART_PC.c:127:5:main	14

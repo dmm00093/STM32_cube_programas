@@ -1,0 +1,4 @@
+"./Src/PuertoSerie_USART_PC.o"
+"./Src/syscalls.o"
+"./Src/sysmem.o"
+"./Startup/startup_stm32f103rbtx.o"
