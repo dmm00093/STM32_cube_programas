@@ -25,37 +25,61 @@
   #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
-
 // ------------------------------------------------------------------------------------------
 //										   FUNCIONES
 // ------------------------------------------------------------------------------------------
 
-void BlinkCustomizable (int reps) {
+void BlinkCustomizable(int reps) {
 
-	for (int i = 0 ; i <= reps ; i++) {
+	for (int i = 0; i <= reps; i++) {
 
-		for (volatile int j = 0 ; j < 50000 ; j++)
+		for (volatile int j = 0; j < 50000; j++)
 
-		GPIOA->GPIO_BSRR.REG = (1 << 5);
+			GPIOA->GPIO_BSRR.REG = (1 << 5);
 
-		for (volatile int j = 0 ; j < 50000 ; j++)
+		for (volatile int j = 0; j < 50000; j++)
 
-		GPIOA->GPIO_BSRR.REG = (1 << 21);
+			GPIOA->GPIO_BSRR.REG = (1 << 21);
 	}
 
+}
+
+// Esta función la llama el hardware del STM32 cada vez que el Timer llega a cero
+// ^Gemini.
+
+// Es una interrupcion, no funciona a un solo hilo. No se exacto como funciona pero,
+
+void SysTick_Handler(void) {
+	static uint32_t contadorMS = 0;
+	static uint8_t estadoLED = 0;
+
+	contadorMS++;
+
+	if (contadorMS >= 75) { // Cada x ms (medio segundo) cambiamos el LED
+		contadorMS = 0; // Reiniciamos el contador
+
+		if (estadoLED == 0) {
+			GPIOA->GPIO_BSRR.REG = (1 << 5); // Atómico: Ponemos a 1 el pin 5 (LED ON)
+			estadoLED = 1;
+		} else {
+			GPIOA->GPIO_BSRR.REG = (1 << 21); // Atómico: Ponemos a 1 el pin 21 (Reset del pin 5 -> LED OFF)
+			estadoLED = 0;
+		}
+	}
 }
 
 // -------------------
 // Comunicacion USART:
 // -------------------
 
-void USART2_EscribirChar (char c) {
+void USART2_EscribirChar(char c) {
 
 	// Esperamos a que el Data Register (DR) esté vacío (TXE->0).
 
-	while (USART2->USART_SR.BITS.TXE == 0);
+	while (USART2->USART_SR.BITS.TXE == 0)
+		;
 
-    // El bit TXE a 0 indica que el hardware ya movió el byte anterior al Shift Register. Es decir:
+	// El bit TXE a 0 indica que el hardware ya movió el byte anterior al Shift Register. Es decir:
 	// El registro de datos USART_DR está vacío y podemos mandarle un bit de información.
 
 	USART2->USART_DR.REG = c;
@@ -65,32 +89,34 @@ void USART2_EscribirChar (char c) {
 
 }
 
-void USART2_EscribirString (char *str) { // Se remite al comentario en USART2_EscribirChar.
+void USART2_EscribirString(char *str) { // Se remite al comentario en USART2_EscribirChar.
 
-	for (int i = 0; str [i] != '\0'; i++){ // Recorremos el array y lo envía cada caracter uno por uno.
+	for (int i = 0; str[i] != '\0'; i++) { // Recorremos el array y lo envía cada caracter uno por uno.
 
-		USART2_EscribirChar (str[i]);
+		USART2_EscribirChar(str[i]);
 	}
 }
 
-char USART2_LeerChar (void) { // Leemos un caracter. Devuelve un void.
+char USART2_LeerChar(void) { // Leemos un caracter. Devuelve un void.
 
-	while (USART2->USART_SR.BITS.RXNE == 0); // 0: Data is not received.
-											 // 1: Received data is ready to be read.
+	while (USART2->USART_SR.BITS.RXNE == 0)
+		; // 0: Data is not received.
+		  // 1: Received data is ready to be read.
 
 	// En este while, comprobamos si puede recibir datos en RXNE. Si puede (LOW) devolvemos el char.
 
-	return (char)(USART2->USART_DR.REG);
+	return (char) (USART2->USART_DR.REG);
 }
 
-void USART2_LeerString (char *buf, int cap) { // Funcion para leer un string con buffer.
-											  // Dirigida para comunicacion PuertoSerie.
+void USART2_LeerString(char *buf, int cap) { // Funcion para leer un string con buffer.
+// Dirigida para comunicacion PuertoSerie.
 
-	int i = 0; char letra;
+	int i = 0;
+	char letra;
 
 	int contadorBarraN = 0; // Nuestro mensaje tendrá dos \n.
 
-	for (i = 0 ; i < (cap - 1) ; i++) { // Recorremos mensaje desde 0 hasta la capacidad_max - 1
+	for (i = 0; i < (cap - 1); i++) { // Recorremos mensaje desde 0 hasta la capacidad_max - 1
 
 		letra = USART2_LeerChar();
 
@@ -100,7 +126,7 @@ void USART2_LeerString (char *buf, int cap) { // Funcion para leer un string con
 
 		}
 
-		buf [i] = letra; // Si no, le asignamos que el buffer en i sea esa letra.
+		buf[i] = letra; // Si no, le asignamos que el buffer en i sea esa letra.
 
 		if (letra == '\n') {  // Si vemos un \n lo contamos
 			contadorBarraN = contadorBarraN + 1;
@@ -114,7 +140,7 @@ void USART2_LeerString (char *buf, int cap) { // Funcion para leer un string con
 		}
 	}
 
-	buf [i] = '\0'; // Fin de cadena donde terminó el texto, ponemos \0 para finalizar el mensaje.
+	buf[i] = '\0'; // Fin de cadena donde terminó el texto, ponemos \0 para finalizar el mensaje.
 
 	// Por ejemplo si leemos Miau : ['M','i','a','u','\0'].
 	// i < (cap - 1) -> aseguramos que haya hueco sin salirnos del array.
@@ -124,8 +150,7 @@ void USART2_LeerString (char *buf, int cap) { // Funcion para leer un string con
 //										    MAIN
 // ------------------------------------------------------------------------------------------
 
-int main(void)
-{
+int main(void) {
 
 	// Consultar la pagina 146 del manual.
 
@@ -163,12 +188,12 @@ int main(void)
 	// USART2_RX -> PA3.
 
 	RCC->APB1ENR.BITS.USART2EN = 1; // USART1_EN, CLK.
-	RCC->APB2ENR.BITS.AFIOEN   = 1; // Reloj AFIO habilitado, alternate function para USART.
+	RCC->APB2ENR.BITS.AFIOEN = 1; // Reloj AFIO habilitado, alternate function para USART.
 
 	// USART1_TX.
 	// USART1_TX solo obedece a USART, no obedece a BSRR.
 
-	GPIOA->GPIO_CRL.BITS.CNF2  = 2; // Alt.Func. PushPull.
+	GPIOA->GPIO_CRL.BITS.CNF2 = 2; // Alt.Func. PushPull.
 	GPIOA->GPIO_CRL.BITS.MODE2 = 3; // 50 MHz.
 
 	// USART1_RX.
@@ -197,145 +222,121 @@ int main(void)
 	USART2->USART_CR1.BITS.TE = 1; // Transmitter Enable (Transmitter es TX, TE es su enable)
 	USART2->USART_CR1.BITS.RE = 1; // Receiver Enable (Receiver es RX, RE es su enable)
 
+	// --------------------------------------------------------
+	// 5. Habilitación del boton B1 user en PC13 IO (pin2)
+	// --------------------------------------------------------
+
+	RCC->APB2ENR.BITS.IOPCEN = 1; // enable el clock del puerto c
+
+	GPIOC->GPIO_CRH.BITS.CNF13 = 2; // Port C adress 13. Pull up / Pull down
+	GPIOC->GPIO_CRH.BITS.MODE13 = 0;
+
+	// Usaremos el Port input data register (GPIOx_IDR) (x=A..G) del 13.
+
+	// Punteros a dirs de memoria para el parpadeo. Algo raro.
+
+	*((volatile uint32_t*) 0xE000E014) = 72000 - 1; // SysTick->LOAD
+	*((volatile uint32_t*) 0xE000E018) = 0;           // SysTick->VAL
+	*((volatile uint32_t*) 0xE000E010) = 0x00000007;  // SysTick->CTRL
+
 	// --------------------------------------------------------------------------------------
 	// 										  LOOP
 	// --------------------------------------------------------------------------------------
 
 	while (1) {
 
-		int op;
+		char string[100]; // Creamos un buffer de 13 almacenados en RAM para rellenar.
 
-		op = 3;
+		USART2_LeerString(string, 100); // Leemos el string que nos ha enviado el PC
 
-		/*if (op == 0) { // Prueba de mandar texto continuamente a la consola, funciones con TXE.
-					   // Estará constantemente mandando texto, parpadeando el LED (comprobacion).
+		while (USART2->USART_SR.BITS.TC == 0);
 
-			// Encendemos LED
-			GPIOA->GPIO_BSRR.REG = (1 << 5);
+		int cap = 13; // El mensaje de entrada maximo tendrá 13 caracteres.
 
-			// Enviamos un texto completo
-			USART2_EscribirString("Hola desde mi STM32!\r\n");
+		int testn = 0;
 
-			// Retardo grande para que nos de tiempo a verlo y no sature la pantalla
-			for (volatile int i = 0 ; i < 1000000 ; i++);
+		int contadorSaldo = 0;
 
-			// Apagamos LED
-			GPIOA->GPIO_BSRR.REG = (1 << 21);
+		uint16_t testInt = 0;
+		uint16_t carrito = 0;
+		uint16_t saldo = 0;
+		uint16_t multiplicadores[5] = { 10000, 1000, 100, 10, 1 };
 
-			// Otro retardo
-			for (volatile int i = 0 ; i < 1000000 ; i++);
+		for (int i = 0; i < (cap - 1); i++) {
 
-		}
+			if (string[i] == '\0') {
+				break;
+			} // Terminamos bucle si hemos llegado a fin de linea.
 
-		if (op == 1) { // Prueba transmision y recepcion con funciones que tocan TXE y RXNE
-					   // El LED va a parpadear cada vez que nosotros presionemos una tecla.
+			if (string[i] == '\n') {
+				testn = 1;
+			} // Si detectamos un \n, sabemos que pasamos a saldo.
 
-			char c;
+			if (testn == 0) { // Si no detectamos un \n, entonces, estamos en carrito.
 
-			for (volatile int i = 0 ; i < 100000 ; i++); // Retardo de encender LED.
+				testInt = string[i] - '0';
 
-			// USART2_EscribirChar ('A');
-
-			GPIOA->GPIO_BSRR.REG = (1 << 5);
-
-			c = USART2_LeerChar (); // Programa espera a que teclees una letra, luego, la lee.
-									// Bloquea programa hasta que RXNE sea 1 (dato listo).
-
-			USART2_EscribirChar (c); // Ahora, el programa va a mostrar esa letra en la consola.
-
-			for (volatile int i = 0 ; i < 100000 ; i++); // Retardo para ver que se realizó.
-
-			GPIOA->GPIO_BSRR.REG = (1 << 21); // Apagamos led.
-
-		}*/
-
-
-		if (op == 2) { // Prueba de transmisión PuertoSerie con PC usando COM de STLINK.
-
-			for (volatile int i = 0 ; i < 100000 ; i++); // Delay. Iniciamos LED para decir que empezamos.
-
-			GPIOA -> GPIO_BSRR.REG = (1 << 5); // LED on.
-
-			char string [100];
-
-			USART2_LeerString (string, 100); // Leemos el string que nos ha enviado el PC.
-
-			BlinkCustomizable(3); // Parpadeamos 3 veces para indicar que nos ha llegado el mensaje.
-
-			USART2_EscribirString ("Mensaje almacenado: ");
-
-			USART2_EscribirString(string); // Escribimos el mensaje almacenado tras la comunicación.
-			USART2_EscribirString("\r\n"); // Retorno carro y espacio.
-
-		}
-
-		if (op == 3) { // Prueba de transmisión PuertoSerie con PC usando COM de STLINK.
-					   // Version final de maquina expendedora.
-
-			for (volatile int i = 0 ; i < 100000 ; i++); // Delay. Iniciamos LED para decir que empezamos.
-
-			GPIOA -> GPIO_BSRR.REG = (1 << 5); // LED on.
-
-			char string[13]; // Creamos un buffer de 13 almacenados en RAM para rellenar.
-
-			USART2_LeerString (string, 13); // Leemos el string que nos ha enviado el PC.
-
-			int cap = 13; // El mensaje de entrada maximo tendrá 13 caracteres.
-
-			int testn = 0;
-			int contadorSaldo = 0;
-
-			uint16_t testInt = 0;
-			uint16_t carrito = 0;
-			uint16_t saldo = 0;
-			uint16_t multiplicadores [5] = {10000, 1000, 100, 10, 1};
-
-			for (int i = 0 ; i < (cap) ; i++) {
-
-				if (string [i] == '\0') {break;} // Terminamos bucle si hemos llegado a fin de linea.
-
-				if (string [i] == '\n') { testn = 1; } // Si detectamos un \n, sabemos que pasamos a saldo.
-
-				if (testn == 0) { // Si no detectamos un \n, entonces, estamos en carrito.
-
-					testInt = string [i] - '0';
-
-					carrito = carrito + (testInt * multiplicadores [i]);
-				}
-
-				// Ahora, si estamos en saldo, lo obtenemos hasta encontrar otro \n o un \0, por seguridad.
-				if (testn != 0 && string[i] != '\n' && string[i] != '\0') {
-
-					testInt = string [i] - '0';
-
-					saldo = saldo + (testInt * multiplicadores [contadorSaldo]); // nuevo cont a 0 para mults.
-
-					contadorSaldo = contadorSaldo + 1;
-				}
+				carrito = carrito + (testInt * multiplicadores[i]);
 			}
 
-			int resultadoCompra; // Mandamos a PC un numero segun el resultado de la diferencia.
+			// Ahora, si estamos en saldo, lo obtenemos hasta encontrar otro \n o un \0, por seguridad.
 
-			char cambioString [20];
+			if (testn != 0 && string[i] != '\n' && string[i] != '\0') {
+
+				testInt = string[i] - '0';
+
+				saldo = saldo + (testInt * multiplicadores[contadorSaldo]); // nuevo cont a 0 para mults.
+
+				contadorSaldo = contadorSaldo + 1;
+			}
+		}
+
+		int resultadoCompra; // Mandamos a PC un numero segun el resultado de la diferencia.
+
+		char cambioString[20];
+
+		if ((GPIOC->GPIO_IDR.REG & (1 << 13)) != 0) { // SI B1 NO PULSADO -> HAY CAMBIO.
 
 			if (saldo < carrito) {
-				resultadoCompra = -1;
+
+				resultadoCompra = -1; // -1 --> ERROR. se corta
 
 				sprintf(cambioString, "%d\n", resultadoCompra);
 			}
 
-
 			if (saldo >= carrito) {
+
 				resultadoCompra = 0;
 
-				uint16_t cambioInt = saldo-carrito;
+				uint16_t cambioInt = saldo - carrito; // 0\nCAMBIO --> OK
 
 				sprintf(cambioString, "%d\n%05u\n", resultadoCompra, cambioInt);
 			}
 
-			// Enviamos si ha sido satisfactorio y el cambio.
-
-			USART2_EscribirString(cambioString);
 		}
+
+		else {
+
+			if (saldo == carrito) {
+
+				resultadoCompra = 0; // OK: Importe exacto, compra aceptada
+				sprintf(cambioString, "%d\n%05u\n", resultadoCompra, 0); // Cambio es 00000
+
+			}
+
+			else {
+
+				// No es importe exacto (ya sea porque falta o porque sobra pero no hay cambio)
+				resultadoCompra = -1; // ERROR: No dispone de cambio
+				sprintf(cambioString, "%d\n", resultadoCompra);
+			}
+		}
+
+		USART2_EscribirString(cambioString);
+
+		while (USART2->USART_SR.BITS.TC == 0);
+
+		BlinkCustomizable(10);
+
 	}
 }
