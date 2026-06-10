@@ -9,10 +9,10 @@
  * Además, se crean funciones (contenidas más abajo) destinadas al procesamiento (escritura y lectura)
  * de datos (por ahora, caracteres o strings de caracteres) usando USART y su Data Register (USART_DR).
  *
- * Para comunicarnos usando el puerto serie, debemos usar el programa "PuertoSerie_Comm.c" de forma
+ * Para comunicarnos usando el puerto serie, debemos usar el programa de la maq. exp. final, de forma
  * paralela en nuestro ordenador. Además, este programa debe estar cargado en el STM32 y, para que este
  * funcione de forma correcta, cualquier programa que use o acceda al COM habilitado por ST_LINK debe de
- * cerrarse, de forma contraria, el programa no funciona (excepto PuertoSerie_Comm.c (se abre en CMD)).
+ * cerrarse, de forma contraria, el programa no funciona (excepto Mexp_STM_Final (se abre en CMD)).
  *
  * El programa está ampliamente comentado para que se pueda entender.
  */
@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "regs_cfg_volatile.h"
+#include "systick_regs.h"
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
   #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
@@ -49,7 +50,7 @@ void BlinkCustomizable(int reps) {
 
 // Es una interrupcion, no funciona a un solo hilo. No se exacto como funciona pero,
 
-void SysTick_Handler(void) {
+void SysTick_Handler(void) { // ISR (Interrupt Service Routine) o Rutina de Servicio de Interrupción por hardware.
 	static uint32_t contadorMS = 0;
 	static uint8_t estadoLED = 0;
 
@@ -190,25 +191,25 @@ int main(void) {
 	RCC->APB1ENR.BITS.USART2EN = 1; // USART1_EN, CLK.
 	RCC->APB2ENR.BITS.AFIOEN = 1; // Reloj AFIO habilitado, alternate function para USART.
 
-	// USART1_TX.
-	// USART1_TX solo obedece a USART, no obedece a BSRR.
+	// USART2_TX.
+	// USART2_TX solo obedece a USART, no obedece a BSRR.
 
 	GPIOA->GPIO_CRL.BITS.CNF2 = 2; // Alt.Func. PushPull.
 	GPIOA->GPIO_CRL.BITS.MODE2 = 3; // 50 MHz.
 
-	// USART1_RX.
+	// USART2_RX.
 
 	GPIOA->GPIO_CRL.BITS.CNF3 = 1;  // Input floating.
 	GPIOA->GPIO_CRL.BITS.MODE3 = 0; // Es una entrada.
 
 	// ---------------------------------------------------------------------------------------
 	// 3. Configuracion baudios en frecuencia. (reloj interno PCLK2, pag 799) (Pag 92 es clocks).
-	//	  Por defecto, se inicializa a 8 MHz el HSI interno, pero puedo configurarlo a 72 MHz.
+	//	  Por defecto, se inicializa a 8 MHz el HSI interno, pero puedo configurarlo a 72 MHz (PLL) (pag 129)
 	// ---------------------------------------------------------------------------------------
 
 	// Calculo de mantisa y fraccion:
 
-	// USARTDIV = fclk / 16 * Baudrate
+	// USARTDIV = fclk / 16 * Baudrate (por ej 72MHz / 16*9600 = 468.75) (mantisa = 468, fraccion = 0.75*16 = 12)
 	// Frac = DIV_Decimal * 16
 
 	USART2->USART_BRR.BITS.DIV_Mantissa = 52; // Calculo usando CLK por defecto HSI de 8 MHz.
@@ -233,11 +234,36 @@ int main(void) {
 
 	// Usaremos el Port input data register (GPIOx_IDR) (x=A..G) del 13.
 
-	// Punteros a dirs de memoria para el parpadeo. Algo raro.
+	// --------------------------------------------------------------------------
+	// 6. Habilitación de SysTick (En memoria, igualmente, registro está DEFINIDO
+	// --------------------------------------------------------------------------
 
-	*((volatile uint32_t*) 0xE000E014) = 72000 - 1; // SysTick->LOAD
+	// Punteros a dirs de memoria para el SysTick. PÁGINA 6 PM0056 Programming manual
+
+	*((volatile uint32_t*) 0xE000E014) = 8000 - 1;    // SysTick->LOAD
+
+	/* SysTick->STK_LOAD.REG = 8000 - 1; 8000 -> Frecuencia del reloj usado (HSI 8 MHz).
+	 * 											 Define desde que numero cuenta el temporizador interno SysTick
+												(8000*10^6 veces por seg).*/
+	
+	/* To generate a multi-shot timer with a period of N processor clock cycles, use a RELOAD
+	value of N-1. For example, if the SysTick interrupt is required every 100 clock pulses, set
+	RELOAD to 99*/
+	
 	*((volatile uint32_t*) 0xE000E018) = 0;           // SysTick->VAL
+	
+	/* SysTick->STK_VAL.REG = 0; Almacena el valor del contador actual.
+	 *  					     Se inicia a 0 para limpiarlo cuando se ejecuta. */
+
+	
 	*((volatile uint32_t*) 0xE000E010) = 0x00000007;  // SysTick->CTRL
+													  // 0x00000007 -> 0111 en bin.
+
+	/* SysTick->STK_CTRL.BITS.ENABLE    = 1; Enciende el contador. A partir de esta línea, el SysTick empieza a contar.
+	   SysTick->STK_CTRL.BITS.TICK_INT  = 1; Activa la interrupción.
+	   SysTick->STK_CTRL.BITS.CLKSOURCE = 1; Selecciona la fuente de reloj (AHB sin divisiones)
+	   	   	   	   	   	   	   	   	   	     AHB -> Reloj del núcleo del procesador.
+	*/
 
 	// --------------------------------------------------------------------------------------
 	// 										  LOOP
